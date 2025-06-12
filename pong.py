@@ -1,165 +1,245 @@
-# app.py
-import streamlit as st
-from streamlit_pygame import st_pygame
-import pygame, sys, random, math
+import asyncio
+import pygame
+import random
+import math
 
-# --- Configurações iniciais ---
+# Inicialização
 WIDTH, HEIGHT = 800, 600
 FPS = 60
+WHITE = (255, 255, 255)
+BLACK = (0, 0, 0)
+SHIP_COLOR = (0, 255, 200)
+ASTEROID_COLOR = (200, 200, 200)
+BULLET_COLOR = (255, 230, 0)
 
-WHITE = (255,255,255)
-BLACK = (0,0,0)
-SHIP_COLOR = (0,255,200)
-ASTEROID_COLOR = (200,200,200)
-BULLET_COLOR = (255,230,0)
+SHIP_SIZE = 40
+ASTEROID_SIZE = 50
+BULLET_SIZE = 6
+SHIP_SPEED = 5
+BULLET_SPEED = 5
+ASTEROID_SPEED_RANGE = (2, 4)
+ASTEROID_SPAWN_RATE = 45
 
-SHIP_SIZE, ASTEROID_SIZE, BULLET_SIZE = 40, 50, 6
-SHIP_SPEED, BULLET_SPEED = 5, 5
-ASTEROID_SPEED_RANGE = (2,4)
-ASTEROID_SPAWN_RATE = 45  # frames
+pygame.init()
+WIN = pygame.display.set_mode((WIDTH, HEIGHT))
+pygame.display.set_caption("Asteroides Simples - Pygbag")
 
-# --- Auxiliares ---
-def rot_center(img, ang, x, y):
-    r = pygame.transform.rotate(img, ang)
-    return r, r.get_rect(center=(x,y))
+font = pygame.font.SysFont(None, 36)
+
+
+def rot_center(image, angle, x, y):
+    rotated_image = pygame.transform.rotate(image, angle)
+    new_rect = rotated_image.get_rect(center=(x, y))
+    return rotated_image, new_rect
+
 
 def get_angle(x1, y1, x2, y2):
-    return -math.degrees(math.atan2(y2-y1, x2-x1))
+    return -math.degrees(math.atan2(y2 - y1, x2 - x1))
 
-# --- Classes ---
+
 class Ship:
     def __init__(self):
-        self.x, self.y = WIDTH//2, HEIGHT//2
-        self.size, self.speed = SHIP_SIZE, SHIP_SPEED
+        self.x = WIDTH // 2
+        self.y = HEIGHT // 2
+        self.size = SHIP_SIZE
+        self.speed = SHIP_SPEED
         self.angle = 0
-        self.img = self.make_img()
-        self.inv = 0
-    def make_img(self):
-        surf = pygame.Surface((self.size,self.size), pygame.SRCALPHA)
-        pygame.draw.polygon(surf, SHIP_COLOR, [(self.size//2,0),(0,self.size),(self.size,self.size)])
+        self.image = self.make_image()
+        self.invulneravel_timer = 0
+
+    def make_image(self):
+        surf = pygame.Surface((self.size, self.size), pygame.SRCALPHA)
+        pygame.draw.polygon(surf, SHIP_COLOR, [
+            (self.size // 2, 0), (0, self.size), (self.size, self.size)
+        ])
         return surf
+
     def move(self, keys):
-        dx=dy=0
-        if keys[pygame.K_LEFT] or keys[pygame.K_a]: dx-=self.speed
-        if keys[pygame.K_RIGHT] or keys[pygame.K_d]: dx+=self.speed
-        if keys[pygame.K_UP] or keys[pygame.K_w]: dy-=self.speed
-        if keys[pygame.K_DOWN] or keys[pygame.K_s]: dy+=self.speed
-        self.x = max(self.size//2, min(WIDTH-self.size//2, self.x+dx))
-        self.y = max(self.size//2, min(HEIGHT-self.size//2, self.y+dy))
-    def update_angle(self, mpos): self.angle = get_angle(self.x,self.y,*mpos)
-    def update_inv(self): 
-        if self.inv>0: self.inv-=1
-    def is_inv(self): return self.inv>0
+        dx = dy = 0
+        if keys[pygame.K_LEFT] or keys[pygame.K_a]: dx -= self.speed
+        if keys[pygame.K_RIGHT] or keys[pygame.K_d]: dx += self.speed
+        if keys[pygame.K_UP] or keys[pygame.K_w]: dy -= self.speed
+        if keys[pygame.K_DOWN] or keys[pygame.K_s]: dy += self.speed
+        self.x = max(self.size // 2, min(WIDTH - self.size // 2, self.x + dx))
+        self.y = max(self.size // 2, min(HEIGHT - self.size // 2, self.y + dy))
+
+    def update_angle(self, mouse_pos):
+        self.angle = get_angle(self.x, self.y, *mouse_pos)
+
+    def update_invulnerabilidade(self):
+        if self.invulneravel_timer > 0:
+            self.invulneravel_timer -= 1
+
+    def is_invulneravel(self):
+        return self.invulneravel_timer > 0
+
     def draw(self, win):
-        if self.is_inv() and (self.inv//5)%2==0: return
-        r, rect = rot_center(self.img, self.angle, self.x, self.y)
-        win.blit(r, rect)
+        if self.is_invulneravel() and (self.invulneravel_timer // 5) % 2 == 0:
+            return
+        rotated, rect = rot_center(self.image, self.angle, self.x, self.y)
+        win.blit(rotated, rect)
+
     def get_rect(self):
-        return pygame.Rect(self.x-self.size//2,self.y-self.size//2,self.size,self.size)
+        return pygame.Rect(self.x - self.size // 2, self.y - self.size // 2, self.size, self.size)
+
 
 class Bullet:
     def __init__(self, x, y, angle):
-        self.x, self.y = x, y
-        self.size, self.angle, self.speed = BULLET_SIZE, math.radians(angle), BULLET_SPEED
+        self.x = x
+        self.y = y
+        self.size = BULLET_SIZE
+        self.angle = math.radians(angle)
+        self.speed = BULLET_SPEED
+
     def update(self):
-        self.x += self.speed*math.cos(self.angle)
-        self.y -= self.speed*math.sin(self.angle)
+        self.x += self.speed * math.cos(self.angle)
+        self.y -= self.speed * math.sin(self.angle)
+
     def draw(self, win):
-        pygame.draw.circle(win, BULLET_COLOR, (int(self.x),int(self.y)), self.size)
-    def off(self):
-        return not (0<=self.x<=WIDTH and 0<=self.y<=HEIGHT)
+        pygame.draw.circle(win, BULLET_COLOR, (int(self.x), int(self.y)), self.size)
+
+    def off_screen(self):
+        return not (0 <= self.x <= WIDTH and 0 <= self.y <= HEIGHT)
+
     def get_rect(self):
-        return pygame.Rect(self.x-self.size,self.y-self.size,self.size*2,self.size*2)
+        return pygame.Rect(self.x - self.size, self.y - self.size, self.size * 2, self.size * 2)
+
 
 class Asteroid:
     def __init__(self):
-        m=50; side=random.choice(['top','bottom','left','right'])
-        if side=='top': self.x=random.randint(0,WIDTH); self.y=-m
-        elif side=='bottom': self.x=random.randint(0,WIDTH); self.y=HEIGHT+m
-        elif side=='left': self.x=-m; self.y=random.randint(0,HEIGHT)
-        else: self.x=WIDTH+m; self.y=random.randint(0,HEIGHT)
-        ang=math.atan2(HEIGHT//2-self.y, WIDTH//2-self.x)+random.uniform(-.5,.5)
-        sp=random.uniform(*ASTEROID_SPEED_RANGE)
-        self.dx, self.dy = math.cos(ang)*sp, math.sin(ang)*sp
+        margin = 50
+        side = random.choice(['top', 'bottom', 'left', 'right'])
+        if side == 'top':
+            self.x = random.randint(0, WIDTH)
+            self.y = -margin
+        elif side == 'bottom':
+            self.x = random.randint(0, WIDTH)
+            self.y = HEIGHT + margin
+        elif side == 'left':
+            self.x = -margin
+            self.y = random.randint(0, HEIGHT)
+        else:
+            self.x = WIDTH + margin
+            self.y = random.randint(0, HEIGHT)
+        angle = math.atan2(HEIGHT//2 - self.y, WIDTH//2 - self.x) + random.uniform(-0.5, 0.5)
+        self.dx = math.cos(angle) * random.uniform(*ASTEROID_SPEED_RANGE)
+        self.dy = math.sin(angle) * random.uniform(*ASTEROID_SPEED_RANGE)
         self.size = random.randint(ASTEROID_SIZE//2, ASTEROID_SIZE)
-        surf = pygame.Surface((self.size,self.size), pygame.SRCALPHA)
-        pygame.draw.circle(surf, ASTEROID_COLOR, (self.size//2,self.size//2), self.size//2)
-        self.img = surf
-    def update(self): self.x+=self.dx; self.y+=self.dy
-    def off(self):
-        return self.x<-self.size or self.x>WIDTH+self.size or self.y<-self.size or self.y>HEIGHT+self.size
-    def draw(self, win):
-        win.blit(self.img,(self.x-self.size//2,self.y-self.size//2))
-    def get_rect(self):
-        return pygame.Rect(self.x-self.size//2,self.y-self.size//2,self.size,self.size)
+        self.image = self.make_image()
 
-# --- Loop do jogo ---
-def game_loop(win):
+    def make_image(self):
+        surf = pygame.Surface((self.size, self.size), pygame.SRCALPHA)
+        pygame.draw.circle(surf, ASTEROID_COLOR, (self.size//2, self.size//2), self.size//2)
+        return surf
+
+    def update(self):
+        self.x += self.dx
+        self.y += self.dy
+
+    def draw(self, win):
+        win.blit(self.image, (self.x - self.size // 2, self.y - self.size // 2))
+
+    def get_rect(self):
+        return pygame.Rect(self.x - self.size // 2, self.y - self.size // 2, self.size, self.size)
+
+    def off_screen(self):
+        return (
+            self.x < -self.size or self.x > WIDTH + self.size or
+            self.y < -self.size or self.y > HEIGHT + self.size
+        )
+
+
+async def main():
     clock = pygame.time.Clock()
     ship = Ship()
-    bullets, asteroids = [], []
-    spawn, score, vidas = 0, 0, 3
-    shoot_cd = 0
-    font = pygame.font.SysFont(None, 36)
-    running = True
+    bullets = []
+    asteroids = []
+    spawn_timer = 0
+    score = 0
+    vidas = 3
+    shoot_cooldown = 0
 
-    while running:
+    try:
+        background = pygame.image.load("background.png")
+        background = pygame.transform.scale(background, (WIDTH, HEIGHT))
+    except:
+        background = None
+
+    while True:
         clock.tick(FPS)
-        mx, my = pygame.mouse.get_pos()
-        for e in pygame.event.get():
-            if e.type == pygame.QUIT: running=False
-
+        mouse_pos = pygame.mouse.get_pos()
         keys = pygame.key.get_pressed()
         ship.move(keys)
-        ship.update_angle((mx,my))
-        ship.update_inv()
+        ship.update_angle(mouse_pos)
+        ship.update_invulnerabilidade()
 
-        if (pygame.mouse.get_pressed()[0] or pygame.mouse.get_pressed()[2]) and shoot_cd<=0:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                return
+
+        mouse_buttons = pygame.mouse.get_pressed()
+        if (mouse_buttons[0] or mouse_buttons[2]) and shoot_cooldown <= 0:
             bullets.append(Bullet(ship.x, ship.y, ship.angle))
-            shoot_cd = 10
-        if shoot_cd>0: shoot_cd-=1
+            shoot_cooldown = 10
 
-        spawn+=10
-        if spawn>=ASTEROID_SPAWN_RATE:
-            asteroids.append(Asteroid()); spawn=0
+        if shoot_cooldown > 0:
+            shoot_cooldown -= 1
 
-        for b in bullets[:]:
-            b.update()
-            if b.off(): bullets.remove(b)
-        for a in asteroids[:]:
-            a.update()
-            if a.off(): asteroids.remove(a)
+        spawn_timer += 10
+        if spawn_timer >= ASTEROID_SPAWN_RATE:
+            asteroids.append(Asteroid())
+            spawn_timer = 0
 
-        for b in bullets[:]:
-            for a in asteroids[:]:
-                if b.get_rect().colliderect(a.get_rect()):
-                    bullets.remove(b); asteroids.remove(a); score+=1; break
+        for bullet in bullets[:]:
+            bullet.update()
+            if bullet.off_screen(): bullets.remove(bullet)
 
-        for a in asteroids[:]:
-            if ship.get_rect().colliderect(a.get_rect()) and not ship.is_inv():
-                asteroids.remove(a)
-                vidas-=1
-                ship.inv = 60
-                if vidas<=0: running=False
+        for asteroid in asteroids[:]:
+            asteroid.update()
+            if asteroid.off_screen(): asteroids.remove(asteroid)
 
-        win.fill(BLACK)
-        ship.draw(win)
-        for b in bullets: b.draw(win)
-        for a in asteroids: a.draw(win)
+        bullets_to_remove = []
+        asteroids_to_remove = []
 
-        win.blit(font.render(f"Pontos: {score}", True, WHITE), (10,10))
-        win.blit(font.render(f"Vidas: {vidas}", True, WHITE), (10,40))
-        pygame.draw.rect(win, WHITE, (0,0,WIDTH,HEIGHT),2)
+        for bullet in bullets:
+            for asteroid in asteroids:
+                if bullet.get_rect().colliderect(asteroid.get_rect()):
+                    bullets_to_remove.append(bullet)
+                    asteroids_to_remove.append(asteroid)
+                    score += 1
+
+        for b in bullets_to_remove:
+            if b in bullets: bullets.remove(b)
+        for a in asteroids_to_remove:
+            if a in asteroids: asteroids.remove(a)
+
+        for asteroid in asteroids[:]:
+            if ship.get_rect().colliderect(asteroid.get_rect()) and not ship.is_invulneravel():
+                asteroids.remove(asteroid)
+                vidas -= 1
+                ship.invulneravel_timer = 60
+                if vidas <= 0:
+                    return  # Encerra o jogo
+
+        if background:
+            WIN.blit(background, (0, 0))
+        else:
+            WIN.fill(BLACK)
+
+        ship.draw(WIN)
+        for bullet in bullets:
+            bullet.draw(WIN)
+        for asteroid in asteroids:
+            asteroid.draw(WIN)
+
+        score_surf = font.render(f"Pontos: {score}", True, WHITE)
+        vidas_surf = font.render(f"Vidas: {vidas}", True, WHITE)
+        WIN.blit(score_surf, (10, 10))
+        WIN.blit(vidas_surf, (10, 40))
+
+        pygame.draw.rect(WIN, WHITE, (0, 0, WIDTH, HEIGHT), 2)
         pygame.display.flip()
+        await asyncio.sleep(0)
 
-    return score
-
-# --- Streamlit ---
-st.set_page_config(layout="wide")
-st.title("💥 Asteroides no Streamlit")
-st.write("Clique pra atirar, use WASD ou setas pra controlar a nave!")
-score = st_pygame(game_loop, key="game", frame_rate=FPS, width=WIDTH, height=HEIGHT)
-if score is not None:
-    st.success(f"Game over! Sua pontuação: {score}")
-    if st.button("Jogar de novo"):
-        st.experimental_rerun()
+if __name__ == "__main__":
+    asyncio.run(main())
