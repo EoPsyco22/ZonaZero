@@ -1,3 +1,4 @@
+import streamlit as st
 import pygame
 import random
 import math
