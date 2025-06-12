@@ -1,42 +1,42 @@
-import asyncio
+
 import pygame
 import random
 import math
+import sys
 
 # Inicialização
+pygame.init()
 WIDTH, HEIGHT = 800, 600
-FPS = 60
+WIN = pygame.display.set_mode((WIDTH, HEIGHT))
+pygame.display.set_caption("Asteroides Simples - Pygame")
+
+# Cores
 WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
 SHIP_COLOR = (0, 255, 200)
 ASTEROID_COLOR = (200, 200, 200)
 BULLET_COLOR = (255, 230, 0)
+FPS = 60
 
+# Parâmetros do jogo
 SHIP_SIZE = 40
 ASTEROID_SIZE = 50
 BULLET_SIZE = 6
 SHIP_SPEED = 5
 BULLET_SPEED = 5
 ASTEROID_SPEED_RANGE = (2, 4)
-ASTEROID_SPAWN_RATE = 45
+ASTEROID_SPAWN_RATE = 45  # frames
 
-pygame.init()
-WIN = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption("Asteroides Simples - Pygbag")
-
-font = pygame.font.SysFont(None, 36)
-
-
+# Funções auxiliares
 def rot_center(image, angle, x, y):
     rotated_image = pygame.transform.rotate(image, angle)
     new_rect = rotated_image.get_rect(center=(x, y))
     return rotated_image, new_rect
 
-
 def get_angle(x1, y1, x2, y2):
     return -math.degrees(math.atan2(y2 - y1, x2 - x1))
 
-
+# Classes principais
 class Ship:
     def __init__(self):
         self.x = WIDTH // 2
@@ -49,19 +49,31 @@ class Ship:
 
     def make_image(self):
         surf = pygame.Surface((self.size, self.size), pygame.SRCALPHA)
-        pygame.draw.polygon(surf, SHIP_COLOR, [
-            (self.size // 2, 0), (0, self.size), (self.size, self.size)
-        ])
+        pygame.draw.polygon(
+            surf,
+            SHIP_COLOR,
+            [
+                (self.size // 2, 0),
+                (0, self.size),
+                (self.size, self.size),
+            ],
+        )
         return surf
 
     def move(self, keys):
         dx = dy = 0
-        if keys[pygame.K_LEFT] or keys[pygame.K_a]: dx -= self.speed
-        if keys[pygame.K_RIGHT] or keys[pygame.K_d]: dx += self.speed
-        if keys[pygame.K_UP] or keys[pygame.K_w]: dy -= self.speed
-        if keys[pygame.K_DOWN] or keys[pygame.K_s]: dy += self.speed
-        self.x = max(self.size // 2, min(WIDTH - self.size // 2, self.x + dx))
-        self.y = max(self.size // 2, min(HEIGHT - self.size // 2, self.y + dy))
+        if keys[pygame.K_LEFT] or keys[pygame.K_a]:
+            dx -= self.speed
+        if keys[pygame.K_RIGHT] or keys[pygame.K_d]:
+            dx += self.speed
+        if keys[pygame.K_UP] or keys[pygame.K_w]:
+            dy -= self.speed
+        if keys[pygame.K_DOWN] or keys[pygame.K_s]:
+            dy += self.speed
+        self.y += dy
+        self.x += dx
+        self.x = max(self.size//2, min(WIDTH - self.size//2, self.x))
+        self.y = max(self.size//2, min(HEIGHT - self.size//2, self.y))
 
     def update_angle(self, mouse_pos):
         self.angle = get_angle(self.x, self.y, *mouse_pos)
@@ -75,13 +87,14 @@ class Ship:
 
     def draw(self, win):
         if self.is_invulneravel() and (self.invulneravel_timer // 5) % 2 == 0:
-            return
+            return  # Piscar a cada 5 frames
         rotated, rect = rot_center(self.image, self.angle, self.x, self.y)
         win.blit(rotated, rect)
 
     def get_rect(self):
-        return pygame.Rect(self.x - self.size // 2, self.y - self.size // 2, self.size, self.size)
-
+        return pygame.Rect(
+            self.x - self.size // 2, self.y - self.size // 2, self.size, self.size
+        )
 
 class Bullet:
     def __init__(self, x, y, angle):
@@ -102,8 +115,9 @@ class Bullet:
         return not (0 <= self.x <= WIDTH and 0 <= self.y <= HEIGHT)
 
     def get_rect(self):
-        return pygame.Rect(self.x - self.size, self.y - self.size, self.size * 2, self.size * 2)
-
+        return pygame.Rect(
+            self.x - self.size, self.y - self.size, self.size * 2, self.size * 2
+        )
 
 class Asteroid:
     def __init__(self):
@@ -140,7 +154,9 @@ class Asteroid:
         win.blit(self.image, (self.x - self.size // 2, self.y - self.size // 2))
 
     def get_rect(self):
-        return pygame.Rect(self.x - self.size // 2, self.y - self.size // 2, self.size, self.size)
+        return pygame.Rect(
+            self.x - self.size // 2, self.y - self.size // 2, self.size, self.size
+        )
 
     def off_screen(self):
         return (
@@ -148,8 +164,33 @@ class Asteroid:
             self.y < -self.size or self.y > HEIGHT + self.size
         )
 
+def game_over_screen(score):
+    font = pygame.font.SysFont(None, 72)
+    small_font = pygame.font.SysFont(None, 36)
+    running = True
+    while running:
+        WIN.fill(BLACK)
+        text = font.render("GAME OVER", True, WHITE)
+        score_text = small_font.render(f"Pontuação: {score}", True, WHITE)
+        continue_text = small_font.render("Pressione R para jogar novamente ou ESC para sair", True, WHITE)
 
-async def main():
+        WIN.blit(text, (WIDTH//2 - text.get_width()//2, HEIGHT//2 - 100))
+        WIN.blit(score_text, (WIDTH//2 - score_text.get_width()//2, HEIGHT//2))
+        WIN.blit(continue_text, (WIDTH//2 - continue_text.get_width()//2, HEIGHT//2 + 60))
+        pygame.display.flip()
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_r:
+                    main()
+                if event.key == pygame.K_ESCAPE:
+                    pygame.quit()
+                    sys.exit()
+
+def main():
     clock = pygame.time.Clock()
     ship = Ship()
     bullets = []
@@ -157,25 +198,34 @@ async def main():
     spawn_timer = 0
     score = 0
     vidas = 3
-    shoot_cooldown = 0
+    running = True
+    shoot_cooldown = 0  # tempo de espera entre tiros
 
     try:
-        background = pygame.image.load("background.png")
+        background = pygame.image.load("FUN.avif")
         background = pygame.transform.scale(background, (WIDTH, HEIGHT))
     except:
         background = None
 
-    while True:
+    font = pygame.font.SysFont(None, 36)
+
+    while running:
         clock.tick(FPS)
         mouse_pos = pygame.mouse.get_pos()
+
+        if background:
+            WIN.blit(background, (0, 0))
+        else:
+            WIN.fill(BLACK)
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+
         keys = pygame.key.get_pressed()
         ship.move(keys)
         ship.update_angle(mouse_pos)
         ship.update_invulnerabilidade()
-
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                return
 
         mouse_buttons = pygame.mouse.get_pressed()
         if (mouse_buttons[0] or mouse_buttons[2]) and shoot_cooldown <= 0:
@@ -192,11 +242,13 @@ async def main():
 
         for bullet in bullets[:]:
             bullet.update()
-            if bullet.off_screen(): bullets.remove(bullet)
+            if bullet.off_screen():
+                bullets.remove(bullet)
 
         for asteroid in asteroids[:]:
             asteroid.update()
-            if asteroid.off_screen(): asteroids.remove(asteroid)
+            if asteroid.off_screen():
+                asteroids.remove(asteroid)
 
         bullets_to_remove = []
         asteroids_to_remove = []
@@ -209,9 +261,11 @@ async def main():
                     score += 1
 
         for b in bullets_to_remove:
-            if b in bullets: bullets.remove(b)
+            if b in bullets:
+                bullets.remove(b)
         for a in asteroids_to_remove:
-            if a in asteroids: asteroids.remove(a)
+            if a in asteroids:
+                asteroids.remove(a)
 
         for asteroid in asteroids[:]:
             if ship.get_rect().colliderect(asteroid.get_rect()) and not ship.is_invulneravel():
@@ -219,12 +273,7 @@ async def main():
                 vidas -= 1
                 ship.invulneravel_timer = 60
                 if vidas <= 0:
-                    return  # Encerra o jogo
-
-        if background:
-            WIN.blit(background, (0, 0))
-        else:
-            WIN.fill(BLACK)
+                    game_over_screen(score)
 
         ship.draw(WIN)
         for bullet in bullets:
@@ -239,7 +288,9 @@ async def main():
 
         pygame.draw.rect(WIN, WHITE, (0, 0, WIDTH, HEIGHT), 2)
         pygame.display.flip()
-        await asyncio.sleep(0)
+
+    pygame.quit()
+    sys.exit()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
