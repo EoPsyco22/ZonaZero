@@ -4,7 +4,7 @@ import psutil
 import time
 import os
 
-GAME_FILE = "asteroides_jogo.py"
+GAME_FILE = "pong.py"
 
 def find_game_process():
     """Procura por um processo que esteja rodando jogo.py"""
